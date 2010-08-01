@@ -17,6 +17,7 @@
 
 const int32_t EEMEM lastseed = 0xDEADBEEF;
 volatile uint8_t b1, b2, b3; 		// asynchronously-updated button state
+volatile uint8_t updown;			// asynchronously-updated ADC state
 
 int32_t stx; 						// PRNG state variable.  We never return this directly.
 
@@ -51,14 +52,46 @@ static inline void initHW(void) {
 	DDRD &= ~(_BV(1) | _BV(2));
 	usbInit();
 
-	// INIT: HV PWM output
-	DDRB |= _BV(1);
-
 	// INIT: ADC input
 	DDRC &= ~_BV(1);
 
-	// TODO: Setup timers
-	// TODO: Setup ADC
+	// INIT: Setup timers
+	timerInit();
+	// INIT: set up timer1 for PWM
+	timer1Init();
+	timer1PWMInitICR(500);
+	timer1SetPrescaler(TIMER_CLK_DIV1);
+	timer1PWMASet(40);
+	timer1PWMAOn();
+
+	// INIT: Set ADC voltage reference to external AVCC
+	ADMUX |= _BV(REFS0);
+	// INIT: Set ADC multiplexer to ADC1, our feedback channel
+	ADMUX |= _BV(MUX0);
+	// INIT: Set ADC to left-adjust results
+	ADMUX |= _BV(ADLAR);
+	// INIT: Enable ADC circuitry
+	ADCSRA |= _BV(ADEN);
+	// INIT: Enable ADC conversion-completion interrupt
+	ADCSRA |= _BV(ADIE);
+	// INIT: Set ADC prescaler to 128
+	ADCSRA |= (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0));
+	// INIT: Disable digital input buffer on ADC1
+	DIDR0 |= _BV(ADC1D);
+
+}
+
+ISR(ADC_vect) {
+	// ADC result of 0x1e1 corresponds to an HV of 50V.  Ignore the two LSBs to create a bit of deadband
+	//  and improve noise-immunity (there's gonna be noise)
+	if (ADCH > 0x1e) {
+		// voltage is too high!  back off.
+		// TCNT1 = TCNT1--;
+	}
+	if (ADCH < 0x1e) {
+		// voltage is too low!  more power argh argh argh.
+		// TCNT1 = TCNT1++;
+	}
 }
 
 void timer0Overflow(void) {
@@ -138,17 +171,8 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 int16_t main(void) {
 	init();
 
-	uint8_t buf[3];
-
-	bufferChar(buf, 'A');
-	selectGrid(buf, 0);
-	SHRSendBuffer(buf, 3);
-
-	DDRB |= _BV(1);
-
 	while (1) {
 		_delay_ms(10);
-		PORTB = ~(PORTB);
 	}
 
 	return 0;
