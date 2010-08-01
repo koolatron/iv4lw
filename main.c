@@ -171,6 +171,15 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 int16_t main(void) {
 	init();
 
+	uint8_t buf[3];
+
+	bufferChar(buf, 'A');
+	SHRSendBuffer(buf, 3);
+	SHRBlank();
+	_delay_us(2);
+	SHRLatch();
+	SHRUnblank();
+
 	while (1) {
 		_delay_ms(10);
 	}
