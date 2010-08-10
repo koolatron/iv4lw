@@ -59,13 +59,13 @@ section at the end of this file).
 
 /* ----------------------- Optional Hardware Config ------------------------ */
 
-/* #define USB_CFG_PULLUP_IOPORTNAME   D */
+#define USB_CFG_PULLUP_IOPORTNAME   D
 /* If you connect the 1.5k pullup resistor from D- to a port pin instead of
  * V+, you can connect and disconnect the device from firmware by calling
  * the macros usbDeviceConnect() and usbDeviceDisconnect() (see usbdrv.h).
  * This constant defines the port on which the pullup resistor is connected.
  */
-/* #define USB_CFG_PULLUP_BIT          4 */
+#define USB_CFG_PULLUP_BIT          3
 /* This constant defines the bit number in USB_CFG_PULLUP_IOPORT (defined
  * above) where the 1.5k pullup resistor is connected. See description
  * above for details.
@@ -245,7 +245,7 @@ section at the end of this file).
  * obdev's free shared VID/PID pair. See the file USB-IDs-for-free.txt for
  * details.
  */
-#define USB_CFG_DEVICE_NAME     'i', 'v', '4' ,'l', 'w', 'u', 's', 'b'
+#define USB_CFG_DEVICE_NAME     'i', 'v', '4', 'l', 'w', 'u', 's', 'b'
 #define USB_CFG_DEVICE_NAME_LEN 8
 /* Same as above for the device name. If you don't want a device name, undefine
  * the macros. See the file USB-IDs-for-free.txt before you assign a name if
@@ -273,7 +273,7 @@ section at the end of this file).
  * HID class is 3, no subclass and protocol required (but may be useful!)
  * CDC class is 2, use subclass 2 and protocol 1 for ACM
  */
-//#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH    22
+#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH    22
 /* Define this to the length of the HID report descriptor, if you implement
  * an HID device. Otherwise don't define it or define it to 0.
  * If you use this define, you must add a PROGMEM character array named

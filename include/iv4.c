@@ -15,12 +15,12 @@ static const uint8_t chartable[44][3] PROGMEM = {
   {char_7},
   {char_8},
   {char_9},
-  {char_col},
-  {char_scol},
-  {char_lt},
-  {char_eq},
-  {char_gt},
-  {char_qmrk},
+  {char_A},
+  {char_B},
+  {char_C},
+  {char_D},
+  {char_E},
+  {char_F},
   {char_at},
   {char_A},
   {char_B},
@@ -67,14 +67,11 @@ uint8_t* bufferChar(uint8_t* buffer, uint8_t index) {
 }
 
 uint8_t* selectGrid(uint8_t* buffer, uint8_t n) {
-	buffer[1] &= ~(_BV(1) || _BV(2));
-	buffer[2] &= ~(_BV(3) || _BV(4));
-
 	if (n == 0) {
-		buffer[2] |= 0x08;
+		buffer[0] |= 0x08;
 	}
 	if (n == 1) {
-		buffer[2] |= 0x04;
+		buffer[0] |= 0x04;
 	}
 	if (n == 2) {
 		buffer[1] |= 0x01;

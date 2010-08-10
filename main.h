@@ -5,8 +5,13 @@
 #define ON 0
 #define RAND_MAX 0x7FFFFFFF
 
+#define F_CPU 16000000
+
 #define STATE_WORD 10
 #define STATE_TIME 20
+
+#define CUSTOM_RQ_SET_STATUS    1
+#define CUSTOM_RQ_GET_STATUS    2
 
 int16_t main(void);
 void init(void);

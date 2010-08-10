@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/wdt.h>
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #include <util/delay.h>
@@ -17,9 +18,24 @@
 
 const int32_t EEMEM lastseed = 0xDEADBEEF;
 volatile uint8_t b1, b2, b3; 		// asynchronously-updated button state
-volatile uint8_t updown;			// asynchronously-updated ADC state
+volatile uint8_t k;
+volatile uint8_t a, b, c, d;
 
+uint8_t charMap[4][3];
 int32_t stx; 						// PRNG state variable.  We never return this directly.
+
+PROGMEM char usbHidReportDescriptor[22] = {    /* USB report descriptor */
+    0x06, 0x00, 0xff,              // USAGE_PAGE (Generic Desktop)
+    0x09, 0x01,                    // USAGE (Vendor Usage 1)
+    0xa1, 0x01,                    // COLLECTION (Application)
+    0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
+    0x26, 0xff, 0x00,              //   LOGICAL_MAXIMUM (255)
+    0x75, 0x08,                    //   REPORT_SIZE (8)
+    0x95, 0x01,                    //   REPORT_COUNT (1)
+    0x09, 0x00,                    //   USAGE (Undefined)
+    0xb2, 0x02, 0x01,              //   FEATURE (Data,Var,Abs,Buf)
+    0xc0                           // END_COLLECTION
+};
 
 // general device initialization
 void init(void) {
@@ -37,10 +53,8 @@ static inline void initHW(void) {
 	// INIT: All pins output, all pins low
 	PORTB = 0x00;
 	PORTC = 0x00;
-	PORTD = 0x00;
 	DDRB = 0xFF;
 	DDRC = 0xFF;
-	DDRD = 0xFF;
 
 	// INIT: Shift Register
 	initSHR();
@@ -50,7 +64,7 @@ static inline void initHW(void) {
 
 	// INIT: USB IOs (configure as inputs, disable pullups!)
 	DDRD &= ~(_BV(1) | _BV(2));
-	usbInit();
+	PORTD &= ~(_BV(1) | _BV(2));
 
 	// INIT: ADC input
 	DDRC &= ~_BV(1);
@@ -63,6 +77,10 @@ static inline void initHW(void) {
 	timer1SetPrescaler(TIMER_CLK_DIV1);
 	timer1PWMASet(40);
 	timer1PWMAOn();
+	// INIT: set up timer2 for grid muxing
+	timer2Init();
+	timer2SetPrescaler(TIMERRTC_CLK_DIV256);
+	timerAttach(TIMER2OVERFLOW_INT, timer2Overflow);
 
 	// INIT: Set ADC voltage reference to external AVCC
 	ADMUX |= _BV(REFS0);
@@ -78,19 +96,18 @@ static inline void initHW(void) {
 	ADCSRA |= (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0));
 	// INIT: Disable digital input buffer on ADC1
 	DIDR0 |= _BV(ADC1D);
-
 }
 
 ISR(ADC_vect) {
 	// ADC result of 0x1e1 corresponds to an HV of 50V.  Ignore the two LSBs to create a bit of deadband
 	//  and improve noise-immunity (there's gonna be noise)
-	if (ADCH > 0x1e) {
+	if (ADCH > 0x20) {
 		// voltage is too high!  back off.
-		// TCNT1 = TCNT1--;
+		ICR1 = ICR1--;
 	}
-	if (ADCH < 0x1e) {
+	if (ADCH < 0x1c) {
 		// voltage is too low!  more power argh argh argh.
-		// TCNT1 = TCNT1++;
+		ICR1 = ICR1++;
 	}
 }
 
@@ -104,11 +121,21 @@ void timer1Overflow(void) {
 }
 
 void timer2Overflow(void) {
-	// Timer2 is 8-bits, suitable for either very short or coarsely-defined delays.  It supports PWM.  Timer2 is suitable for RTC operation.
+	sei();
 
-	/* crude-but-effective button polling scheme that doesn't cause interrupt contention and doesn't involve busy-waiting.
-	 * You can adjust the sensitivity of the buttons by messing around with the OFF define in main.h - higher = less sensitive
-	 */
+	k++;
+	if (k==4) {
+		k=0;
+	}
+
+	selectGrid(charMap[k], k);
+	SHRSendBuffer(charMap[k], k);
+
+	SHRBlank();
+	_delay_us(2);
+	SHRLatch();
+	SHRUnblank();
+
 	if (PINB & 0x08) {
 		if (b1 < OFF)
 			b1++;
@@ -163,26 +190,59 @@ void update_time(void) {
 }
 
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
-	// TODO: implement USB functionality
-	return 0;
+usbRequest_t    *rq = (void *)data;
+
+    if((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR){
+        //DBG1(0x50, &rq->bRequest, 1);   /* debug output: print our request */
+        if(rq->bRequest == CUSTOM_RQ_SET_STATUS){
+            if(rq->wValue.bytes[0] & 1){    /* set LED */
+                d = '1';
+            }else{                          /* clear LED */
+                d = '0';
+            }
+        }else if(rq->bRequest == CUSTOM_RQ_GET_STATUS){
+            static uchar dataBuffer[1];     /* buffer must stay valid when usbFunctionSetup returns */
+            dataBuffer[0] = 0;
+            usbMsgPtr = dataBuffer;         /* tell the driver which data to return */
+            return 1;                       /* tell the driver to send 1 byte */
+        }
+    } else {
+        /* class requests USBRQ_HID_GET_REPORT and USBRQ_HID_SET_REPORT are
+         * not implemented since we never call them. The operating system
+         * won't call them either because our descriptor defines no meaning.
+         */
+    }
+    return 0;   /* default for not implemented requests: return no data back to host */
 }
 
 /* main function */
 int16_t main(void) {
-	init();
+	uchar   i;
 
-	uint8_t buf[3];
+	a = '0';
+	b = '0';
+	c = '0';
+	d = '0';
 
-	bufferChar(buf, 'A');
-	SHRSendBuffer(buf, 3);
-	SHRBlank();
-	_delay_us(2);
-	SHRLatch();
-	SHRUnblank();
+    usbInit();
+    usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
 
-	while (1) {
-		_delay_ms(10);
-	}
+    i = 0;
+    while(--i) {             /* fake USB disconnect for > 250 ms */
+        _delay_ms(1);
+    }
 
-	return 0;
+    usbDeviceConnect();
+    sei();
+
+    for (;;) {              /* main event loop */
+        usbPoll();
+
+    	bufferChar(charMap[0], a);
+    	bufferChar(charMap[1], b);
+    	bufferChar(charMap[2], c);
+    	bufferChar(charMap[3], d);
+    }
+
+    return 0;
 }

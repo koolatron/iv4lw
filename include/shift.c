@@ -35,21 +35,9 @@ void SHRSendByte(unsigned char byte) {
 }
 
 void SHRSendBuffer(unsigned char* buffer, unsigned char n) {
-	uint8_t bytes = n / 8;
-	int8_t i, j;
-
-	for (i = bytes; i >= 0; i--) {
-		uint8_t byte = buffer[i];
-
-		for (j = 7; j >= 0; j--) {
-			SHR_PORT &= (unsigned char) ~((1 << DATA) | (1 << CLOCK));
-			SHR_PORT |= (unsigned char) (((byte >> j) & 1) << DATA);
-			SHR_PORT |= (unsigned char) (1 << CLOCK);
-		}
-	}
-
-	asm("nop");
-	SHR_PORT &= (unsigned char) ~(1 << CLOCK);
+	SHRSendByte(buffer[0]);
+	SHRSendByte(buffer[1]);
+	SHRSendByte(buffer[2]);
 }
 
 inline void SHRLatch(void) {

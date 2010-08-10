@@ -1,11 +1,8 @@
 #########  AVR Project Makefile Template   #########
 ######                                        ######
-######    Copyright (C) 2003, Pat Deegan,     ######
+######    Copyright (C) 2003-2005,Pat Deegan, ######
 ######            Psychogenic Inc             ######
 ######          All Rights Reserved           ######
-######                                        ######
-######  Modifications (c) 2007 Sean Hill      ######
-######  (EEPROM write functions)              ######
 ######                                        ######
 ###### You are free to use this code as part  ######
 ###### of your own applications provided      ######
@@ -68,7 +65,15 @@
 # Name of target controller 
 # (e.g. 'at90s8515', see the available avr-gcc mmcu 
 # options for possible values)
-MCU=atmega328p
+MCU=atmega168
+
+# id to use with programmer
+# default: PROGRAMMER_MCU=$(MCU)
+# In case the programer used, e.g avrdude, doesn't
+# accept the same MCU name as avr-gcc (for example
+# for ATmega8s, avr-gcc expects 'atmega8' and 
+# avrdude requires 'm8')
+PROGRAMMER_MCU=atmega328p
 
 # Name of our project
 # (use a single word, e.g. 'myproject')
@@ -79,13 +84,13 @@ PROJECTNAME=iv4lw
 # (list all files to compile, e.g. 'a.c b.cpp as.S'):
 # Use .cc, .cpp or .C suffix for C++ files, use .S 
 # (NOT .s !!!) for assembly source code files.
-PRJSRC=main.c
+PRJSRC=main.c include/shift.c include/timerx8.c include/iv4.c include/usb/usbdrv.c include/usb/oddebug.c include/usb/usbdrvasm.S
 
 # additional includes (e.g. -I/path/to/mydir)
 INC=
 
 # libraries to link in (e.g. -lmylib)
-LIBS=./include/timerx8.c ./include/iv4.c ./include/shift.c ./include/usb/usbdrv.c ./include/usb/oddebug.c ./include/usb/usbdrvasm.S
+LIBS=
 
 # Optimization level, 
 # use s (size opt), 1, 2, 3 or 0 (off)
@@ -221,9 +226,8 @@ hex: $(HEXTRG)
 
 writeflash: hex
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)   \
-	 -p $(MCU) -P $(AVRDUDE_PORT) -e        \
-	 -U flash:w:$(HEXROMTRG)		\
-	 -U eeprom:w:$(PROJECTNAME).ee.hex
+	 -p $(PROGRAMMER_MCU) -P $(AVRDUDE_PORT) -e        \
+	 -U flash:w:$(HEXROMTRG)
 
 install: writeflash
 
@@ -254,12 +258,12 @@ $(TRG): $(OBJDEPS)
 #### Generating object files ####
 # object from C
 .c.o: 
-	$(CC) $(CFLAGS) -c $<
+	$(CC) $(CFLAGS) -c $< -o $@
 
 
 # object from C++ (.cc, .cpp, .C files)
 .cc.o .cpp.o .C.o :
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $<
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 # object from asm
 .S.o :
@@ -268,6 +272,7 @@ $(TRG): $(OBJDEPS)
 
 #### Generating hex files ####
 # hex files from elf
+#####  Generating a gdb initialisation file    #####
 .out.hex:
 	$(OBJCOPY) -j .text                    \
 		-j .data                       \
@@ -286,10 +291,10 @@ gdbinit: $(GDBINITFILE)
 
 $(GDBINITFILE): $(TRG)
 	@echo "file $(TRG)" > $(GDBINITFILE)
-
+	
 	@echo "target remote localhost:1212" \
 		                >> $(GDBINITFILE)
-
+	
 	@echo "load"        >> $(GDBINITFILE) 
 	@echo "break main"  >> $(GDBINITFILE)
 	@echo "continue"    >> $(GDBINITFILE)
@@ -304,7 +309,7 @@ clean:
 	$(REMOVE) $(LST) $(GDBINITFILE)
 	$(REMOVE) $(GENASMFILES)
 	$(REMOVE) $(HEXTRG)
-
+	
 
 
 #####                    EOF                   #####
