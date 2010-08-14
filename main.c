@@ -18,8 +18,8 @@
 
 const int32_t EEMEM lastseed = 0xDEADBEEF;
 volatile uint8_t b1, b2, b3; 		// asynchronously-updated button state
-volatile uint8_t k;
-volatile uint8_t a, b, c, d;
+uint8_t k, a, b, c, d;
+volatile uint8_t up;
 
 uint8_t charMap[4][3];
 int32_t stx; 						// PRNG state variable.  We never return this directly.
