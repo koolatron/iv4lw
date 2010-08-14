@@ -20,5 +20,6 @@ void timer0Overflow(void);
 void timer1Overflow(void);
 void timer2Overflow(void);
 uint8_t prng_8(int32_t* x);
+void do_display(void);
 void gen_word(void);
 void update_time(void);

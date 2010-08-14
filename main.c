@@ -123,20 +123,7 @@ void timer1Overflow(void) {
 void timer2Overflow(void) {
 	sei();
 
-	k++;
-	if (k==4) {
-		k=0;
-	}
-
-	selectGrid(charMap[k], k);
-	SHRSendBuffer(charMap[k], k);
-
-	SHRBlank();
-	_delay_us(2);
-	SHRLatch();
-	SHRUnblank();
-
-	if (PINB & 0x08) {
+/*	if (PINB & 0x08) {
 		if (b1 < OFF)
 			b1++;
 	} else {
@@ -156,7 +143,7 @@ void timer2Overflow(void) {
 	} else {
 		if (b3 > ON)
 			b3--;
-	}
+	}*/
 }
 
 uint8_t prng_8(int32_t* x) {
@@ -215,33 +202,47 @@ usbRequest_t    *rq = (void *)data;
     return 0;   /* default for not implemented requests: return no data back to host */
 }
 
+void do_display(void) {
+	k++;
+	if (k == 4) {
+		k = 1;
+	}
+
+	SHRBlank();
+	selectGrid(charMap[k], k);
+	SHRSendBuffer(charMap[k], k);
+	SHRLatch();
+	SHRUnblank();
+}
+
 /* main function */
 int16_t main(void) {
+	init();
+    usbInit();
+
 	uchar   i;
 
-	a = '0';
-	b = '0';
-	c = '0';
-	d = '0';
+	bufferChar(charMap[0], '0');
+	bufferChar(charMap[1], '1');
+	bufferChar(charMap[2], '2');
+	bufferChar(charMap[3], '3');
 
-    usbInit();
+	cli();
     usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
-
     i = 0;
     while(--i) {             /* fake USB disconnect for > 250 ms */
         _delay_ms(1);
     }
-
     usbDeviceConnect();
     sei();
 
     for (;;) {              /* main event loop */
         usbPoll();
 
-    	bufferChar(charMap[0], a);
-    	bufferChar(charMap[1], b);
-    	bufferChar(charMap[2], c);
-    	bufferChar(charMap[3], d);
+        if(up == 1) {
+        	do_display();
+        	up = 0;
+        }
     }
 
     return 0;
