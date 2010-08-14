@@ -21,7 +21,7 @@ static const uint8_t chartable[44][3] PROGMEM = {
   {char_D},
   {char_E},
   {char_F},
-  {char_at},
+  {char_all},
   {char_A},
   {char_B},
   {char_C},

@@ -122,6 +122,7 @@ void timer1Overflow(void) {
 
 void timer2Overflow(void) {
 	sei();
+	up = 1;
 
 /*	if (PINB & 0x08) {
 		if (b1 < OFF)
@@ -205,7 +206,7 @@ usbRequest_t    *rq = (void *)data;
 void do_display(void) {
 	k++;
 	if (k == 4) {
-		k = 1;
+		k = 0;
 	}
 
 	SHRBlank();
