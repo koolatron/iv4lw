@@ -65,7 +65,7 @@
 # Name of target controller 
 # (e.g. 'at90s8515', see the available avr-gcc mmcu 
 # options for possible values)
-MCU=atmega328p
+MCU=atmega168
 
 # id to use with programmer
 # default: PROGRAMMER_MCU=$(MCU)
@@ -84,7 +84,7 @@ PROJECTNAME=iv4lw
 # (list all files to compile, e.g. 'a.c b.cpp as.S'):
 # Use .cc, .cpp or .C suffix for C++ files, use .S 
 # (NOT .s !!!) for assembly source code files.
-PRJSRC=main.c include/shift.c include/timerx8.c include/iv4.c include/usb/usbdrv.c include/usb/usbdrvasm.S
+PRJSRC=main.c include/usb/usbdrv.c include/usb/usbdrvasm.S
 
 # additional includes (e.g. -I/path/to/mydir)
 INC=
