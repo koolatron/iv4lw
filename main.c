@@ -17,7 +17,6 @@
 #include "include/usb/usbdrv.h"		// USB driver header
 
 const int32_t EEMEM lastseed = 0xDEADBEEF;
-volatile uint8_t b1, b2, b3; 		// asynchronously-updated button state
 uint8_t k, a, b, c, d;
 volatile uint8_t up;
 
@@ -181,7 +180,6 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 usbRequest_t    *rq = (void *)data;
 
     if((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR){
-        //DBG1(0x50, &rq->bRequest, 1);   /* debug output: print our request */
         if(rq->bRequest == CUSTOM_RQ_SET_STATUS){
             if(rq->wValue.bytes[0] & 1){    /* set LED */
                 d = '1';
@@ -219,14 +217,13 @@ void do_display(void) {
 /* main function */
 int16_t main(void) {
 	init();
-    usbInit();
 
 	uchar   i;
 
-	bufferChar(charMap[0], '0');
-	bufferChar(charMap[1], '1');
-	bufferChar(charMap[2], '2');
-	bufferChar(charMap[3], '3');
+	a = '0';
+	b = '0';
+	c = '0';
+	d = '0';
 
 	cli();
     usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
@@ -237,12 +234,19 @@ int16_t main(void) {
     usbDeviceConnect();
     sei();
 
+    usbInit();
+
     for (;;) {              /* main event loop */
         usbPoll();
 
         if(up == 1) {
         	do_display();
         	up = 0;
+
+        	bufferChar(charMap[0], a);
+        	bufferChar(charMap[1], b);
+        	bufferChar(charMap[2], c);
+        	bufferChar(charMap[3], d);
         }
     }
 
