@@ -69,39 +69,39 @@ void init(void) {
 }
 
 static inline void initTimers(void) {
-	TCNT1 = 0;								// reset TCNT1
-	TIMSK1 |= _BV(TOIE1);					// enable TCNT1 overflow
+	TCNT1 = 0;										// reset TCNT1
+	TIMSK1 |= _BV(TOIE1);							// enable TCNT1 overflow
 
-	TCCR1A &= ~(_BV(WGM10));				// set PWM mode with ICR top-count
+	TCCR1A &= ~(_BV(WGM10));						// set PWM mode with ICR top-count
 	TCCR1A |= _BV(WGM11);
 	TCCR1B |= (_BV(WGM12) | _BV(WGM13));
 
-	ICR1 = 500;								// set top count value
-	OCR1A = 50;								// set output compare value A
-	OCR1B = 0;								// clear output compare value B
+	ICR1 = 500;										// set top count value
+	OCR1A = 50;										// set output compare value A
+	OCR1B = 0;										// clear output compare value B
 
-	TCCR1A |= _BV(COM1A1);					// turn on channel A PWM output, set OC1A as non-inverted PWM
+	TCCR1A |= _BV(COM1A1);							// turn on channel A PWM output, set OC1A as non-inverted PWM
 	TCCR1A &= ~(_BV(COM1A0));
 
 	TCCR1B &= ~(_BV(CS12) | _BV(CS11) | _BV(CS10));	// clear timer1 clock source
 	TCCR1B |= _BV(CS10);							// set timer1 clock source to Fclk/1
 
 
-	TCNT2 = 0;								// reset TCNT2
-	TIMSK2 |= _BV(TOIE2);					// enable TCNT2 overflow
+	TCNT2 = 0;										// reset TCNT2
+	TIMSK2 |= _BV(TOIE2);							// enable TCNT2 overflow
 
-	TCCR1B &= ~(_BV(CS22) | _BV(CS21) | _BV(CS20));	// clear timer1 clock source
-	TCCR1B |= (_BV(CS22) | _BV(CS21));				// set timer1 clock source to Fclk/256
+	TCCR2B &= ~(_BV(CS22) | _BV(CS21) | _BV(CS20));	// clear timer1 clock source
+	TCCR2B |= (_BV(CS22) | _BV(CS21));				// set timer1 clock source to Fclk/256
 }
 
 static inline void initADC(void) {
-	ADMUX |= _BV(REFS0);					// set ADC voltage reference to external AVCC
-	ADMUX |= _BV(MUX0);						// set ADC multiplexer to ADC1, our feedback channel
-	ADMUX |= _BV(ADLAR);					// set ADC to left-adjust results
-	ADCSRA |= _BV(ADEN);					// enable ADC circuitry
-	ADCSRA |= _BV(ADIE);					// enable ADC conversion-completion interrupt
+	ADMUX |= _BV(REFS0);							// set ADC voltage reference to external AVCC
+	ADMUX |= _BV(MUX0);								// set ADC multiplexer to ADC1, our feedback channel
+	ADMUX |= _BV(ADLAR);							// set ADC to left-adjust results
+	ADCSRA |= _BV(ADEN);							// enable ADC circuitry
+	ADCSRA |= _BV(ADIE);							// enable ADC conversion-completion interrupt
 	ADCSRA |= (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0)); 	// set ADC prescaler to 128
-	DIDR0 |= _BV(ADC1D);					// disable digital input buffer on ADC1
+	DIDR0 |= _BV(ADC1D);							// disable digital input buffer on ADC1
 }
 
 static inline void initHW(void) {
@@ -136,9 +136,6 @@ ISR(ADC_vect) {
 		// voltage is too low!  more power argh argh argh.
 		ICR1 = ICR1++;
 	}
-}
-
-void timer0Overflow(void) {
 }
 
 ISR(TIMER1_OVF_vect) {
@@ -244,6 +241,12 @@ int16_t main(void) {
 	bufferChar(charMap[1], b);
 	bufferChar(charMap[2], c);
 	bufferChar(charMap[3], d);
+
+	//SHRBlank();
+	//selectGrid(charMap[0], 0);
+	//SHRSendBuffer(charMap[0], 0);
+	//SHRLatch();
+	//SHRUnblank();
 
     for (;;) {              /* main event loop */
         usbPoll();
