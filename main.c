@@ -16,10 +16,11 @@
 #include "include/usb/usbdrv.h"		// USB driver header
 
 const int32_t EEMEM lastseed = 0xDEADBEEF;
-uint8_t k, a, b, c, d;
-volatile uint8_t up;
+volatile uint8_t up;				// Flag for signaling display updates from timer2 interrupt
 
-uint8_t charMap[4][3];
+uint8_t k;							// grid mux counter
+uint8_t bitmap[4][3];				// Buffer for literal bitfields that go to the shift register
+uint8_t charmap[4];					// Buffer for logical characters
 int32_t stx; 						// PRNG state variable.  We never return this directly.
 
 PROGMEM char usbHidReportDescriptor[22] = {    /* USB report descriptor */
@@ -196,9 +197,9 @@ usbRequest_t    *rq = (void *)data;
     if((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR){
         if(rq->bRequest == CUSTOM_RQ_SET_STATUS){
             if(rq->wValue.bytes[0] & 1){    /* set LED */
-                d = '1';
+                charmap[0] = '0';
             }else{                          /* clear LED */
-                d = '0';
+                charmap[0] = 'X';
             }
         }else if(rq->bRequest == CUSTOM_RQ_GET_STATUS){
             static uchar dataBuffer[1];     /* buffer must stay valid when usbFunctionSetup returns */
@@ -221,9 +222,11 @@ void do_display(void) {
 		k = 0;
 	}
 
+	bufferChar(bitmap[k], charmap[k]);
+
 	SHRBlank();
-	selectGrid(charMap[k], k);
-	SHRSendBuffer(charMap[k], k);
+	selectGrid(bitmap[k], k);
+	SHRSendBuffer(bitmap[k], k);
 	SHRLatch();
 	SHRUnblank();
 }
@@ -232,21 +235,10 @@ void do_display(void) {
 int16_t main(void) {
 	init();
 
-	a = 'X';
-	b = 'X';
-	c = 'X';
-	d = 'X';
-
-	bufferChar(charMap[0], a);
-	bufferChar(charMap[1], b);
-	bufferChar(charMap[2], c);
-	bufferChar(charMap[3], d);
-
-	//SHRBlank();
-	//selectGrid(charMap[0], 0);
-	//SHRSendBuffer(charMap[0], 0);
-	//SHRLatch();
-	//SHRUnblank();
+	charmap[0] = 'X';
+	charmap[1] = 'X';
+	charmap[2] = 'X';
+	charmap[3] = 'X';
 
     for (;;) {              /* main event loop */
         usbPoll();
