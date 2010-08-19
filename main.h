@@ -16,9 +16,8 @@
 int16_t main(void);
 void init(void);
 static inline void initHW(void);
-void timer0Overflow(void);
-void timer1Overflow(void);
-void timer2Overflow(void);
+static inline void initTimers(void);
+static inline void initADC(void);
 uint8_t prng_8(int32_t* x);
 void do_display(void);
 void gen_word(void);

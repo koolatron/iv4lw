@@ -9,7 +9,6 @@
 #include <avr/eeprom.h>
 #include <util/delay.h>
 
-#include "include/timerx8.h"  		// Timer utility library
 #include "include/iv4.h"      		// IV4 bitfield defines and functions
 #include "include/shift.h"    		// Generic shift register library
 #include "include/words.c"    		// Letter-pair data
@@ -38,7 +37,7 @@ PROGMEM char usbHidReportDescriptor[22] = {    /* USB report descriptor */
 
 // general device initialization
 void init(void) {
-	initHW();
+	uchar   i;
 
 	// NVRAM: get last used random seed, modify, and write back to NVRAM
 	eeprom_busy_wait();
@@ -46,6 +45,63 @@ void init(void) {
 	stx += 0xF0A110AF;
 	eeprom_busy_wait();
 	eeprom_write_block((const void*) &stx, (void*) &lastseed, 4);
+
+	// INIT: IO ports
+	initHW();
+
+	// INIT: all timers
+	initTimers();
+
+	// INIT: ADC stuff
+	initADC();
+
+	cli();
+	usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
+    i = 0;
+    while(--i) {             /* fake USB disconnect for > 250 ms */
+        _delay_ms(1);
+    }
+    usbDeviceConnect();
+    sei();
+
+    // INIT: USB
+    usbInit();
+}
+
+static inline void initTimers(void) {
+	TCNT1 = 0;								// reset TCNT1
+	TIMSK1 |= _BV(TOIE1);					// enable TCNT1 overflow
+
+	TCCR1A &= ~(_BV(WGM10));				// set PWM mode with ICR top-count
+	TCCR1A |= _BV(WGM11);
+	TCCR1B |= (_BV(WGM12) | _BV(WGM13));
+
+	ICR1 = 500;								// set top count value
+	OCR1A = 50;								// set output compare value A
+	OCR1B = 0;								// clear output compare value B
+
+	TCCR1A |= _BV(COM1A1);					// turn on channel A PWM output, set OC1A as non-inverted PWM
+	TCCR1A &= ~(_BV(COM1A0));
+
+	TCCR1B &= ~(_BV(CS12) | _BV(CS11) | _BV(CS10));	// clear timer1 clock source
+	TCCR1B |= _BV(CS10);							// set timer1 clock source to Fclk/1
+
+
+	TCNT2 = 0;								// reset TCNT2
+	TIMSK2 |= _BV(TOIE2);					// enable TCNT2 overflow
+
+	TCCR1B &= ~(_BV(CS22) | _BV(CS21) | _BV(CS20));	// clear timer1 clock source
+	TCCR1B |= (_BV(CS22) | _BV(CS21));				// set timer1 clock source to Fclk/256
+}
+
+static inline void initADC(void) {
+	ADMUX |= _BV(REFS0);					// set ADC voltage reference to external AVCC
+	ADMUX |= _BV(MUX0);						// set ADC multiplexer to ADC1, our feedback channel
+	ADMUX |= _BV(ADLAR);					// set ADC to left-adjust results
+	ADCSRA |= _BV(ADEN);					// enable ADC circuitry
+	ADCSRA |= _BV(ADIE);					// enable ADC conversion-completion interrupt
+	ADCSRA |= (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0)); 	// set ADC prescaler to 128
+	DIDR0 |= _BV(ADC1D);					// disable digital input buffer on ADC1
 }
 
 static inline void initHW(void) {
@@ -67,34 +123,6 @@ static inline void initHW(void) {
 
 	// INIT: ADC input
 	DDRC &= ~_BV(1);
-
-	// INIT: Setup timers
-	timerInit();
-	// INIT: set up timer1 for PWM
-	timer1Init();
-	timer1PWMInitICR(500);
-	timer1SetPrescaler(TIMER_CLK_DIV1);
-	timer1PWMASet(40);
-	timer1PWMAOn();
-	// INIT: set up timer2 for grid muxing
-	timer2Init();
-	timer2SetPrescaler(TIMERRTC_CLK_DIV256);
-	timerAttach(TIMER2OVERFLOW_INT, timer2Overflow);
-
-	// INIT: Set ADC voltage reference to external AVCC
-	ADMUX |= _BV(REFS0);
-	// INIT: Set ADC multiplexer to ADC1, our feedback channel
-	ADMUX |= _BV(MUX0);
-	// INIT: Set ADC to left-adjust results
-	ADMUX |= _BV(ADLAR);
-	// INIT: Enable ADC circuitry
-	ADCSRA |= _BV(ADEN);
-	// INIT: Enable ADC conversion-completion interrupt
-	ADCSRA |= _BV(ADIE);
-	// INIT: Set ADC prescaler to 128
-	ADCSRA |= (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0));
-	// INIT: Disable digital input buffer on ADC1
-	DIDR0 |= _BV(ADC1D);
 }
 
 ISR(ADC_vect) {
@@ -111,16 +139,13 @@ ISR(ADC_vect) {
 }
 
 void timer0Overflow(void) {
-	// Timer0 is 8-bits, suitable for either very short or coarsely-defined delays.  It supports PWM.
 }
 
-void timer1Overflow(void) {
-	// Timer1 is 16-bits, suitable for either long or fine-grained delays.  It supports PWM.
+ISR(TIMER1_OVF_vect) {
 	// OCR1A is attached to the input of our boost convertor.
 }
 
-void timer2Overflow(void) {
-	sei();
+ISR(TIMER2_OVF_vect) {
 	up = 1;
 
 /*	if (PINB & 0x08) {
@@ -147,15 +172,7 @@ void timer2Overflow(void) {
 }
 
 uint8_t prng_8(int32_t* x) {
-	/* JUST WHAT'S GOING ON HERE?
-	 *   You'll notice that we take a 32-bit int as input, but return a measly unsigned char.  What gives?  Can't we just return 32 bits?
-	 *   Or operate on the char instead?  Well, no.  This is a compromise - we can store much more entropy in a 32-bit state variable than
-	 *   in a char.  So we keep the 32-bit state variable around in memory to store entropy, and we only return eight of its bits.  Returning
-	 *   a 32-bit char would require four (4!) registers to be concatenated on the stack, so really passing by reference is the only option if
-	 *   we give a crap about doing this business in any timely manner.  It's still probably pretty slow, what with all that math.
-	 *
-	 *   shifts4lyfe
-	 */
+	// TODO: maybe obsolete this code in favor of the version in libc
 	int32_t temp = *x;
 
 	temp = (temp >> 16) + ((temp << 15) % RAND_MAX) - (temp >> 21) - ((temp << 10) % RAND_MAX);
@@ -203,7 +220,7 @@ usbRequest_t    *rq = (void *)data;
 
 void do_display(void) {
 	k++;
-	if (k == 4) {
+	if (k >= 4) {
 		k = 0;
 	}
 
@@ -218,23 +235,15 @@ void do_display(void) {
 int16_t main(void) {
 	init();
 
-	uchar   i;
+	a = 'X';
+	b = 'X';
+	c = 'X';
+	d = 'X';
 
-	a = '0';
-	b = '0';
-	c = '0';
-	d = '0';
-
-	cli();
-    usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
-    i = 0;
-    while(--i) {             /* fake USB disconnect for > 250 ms */
-        _delay_ms(1);
-    }
-    usbDeviceConnect();
-    sei();
-
-    usbInit();
+	bufferChar(charMap[0], a);
+	bufferChar(charMap[1], b);
+	bufferChar(charMap[2], c);
+	bufferChar(charMap[3], d);
 
     for (;;) {              /* main event loop */
         usbPoll();
@@ -242,11 +251,6 @@ int16_t main(void) {
         if(up == 1) {
         	do_display();
         	up = 0;
-
-        	bufferChar(charMap[0], a);
-        	bufferChar(charMap[1], b);
-        	bufferChar(charMap[2], c);
-        	bufferChar(charMap[3], d);
         }
     }
 
