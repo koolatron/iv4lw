@@ -1,10 +1,8 @@
 #include "main.h"
-#include "include/global.h"
 
 #include <stdint.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <avr/wdt.h>
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #include <util/delay.h>
@@ -21,7 +19,11 @@ volatile uint8_t up;				// Flag for signaling display updates from timer2 interr
 uint8_t k;							// grid mux counter
 uint8_t bitmap[4][3];				// Buffer for literal bitfields that go to the shift register
 uint8_t charmap[4];					// Buffer for logical characters
+uint8_t stateReg;					// Store global state
+uint32_t timeReg;					// Store global time (ticks)
 int32_t stx; 						// PRNG state variable.  We never return this directly.
+
+static uchar currentPosition, bytesRemaining;
 
 PROGMEM char usbHidReportDescriptor[22] = {    /* USB report descriptor */
     0x06, 0x00, 0xff,              // USAGE_PAGE (Generic Desktop)
@@ -30,7 +32,7 @@ PROGMEM char usbHidReportDescriptor[22] = {    /* USB report descriptor */
     0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
     0x26, 0xff, 0x00,              //   LOGICAL_MAXIMUM (255)
     0x75, 0x08,                    //   REPORT_SIZE (8)
-    0x95, 0x01,                    //   REPORT_COUNT (1)
+    0x95, 0x04,                    //   REPORT_COUNT (4)
     0x09, 0x00,                    //   USAGE (Undefined)
     0xb2, 0x02, 0x01,              //   FEATURE (Data,Var,Abs,Buf)
     0xc0                           // END_COLLECTION
@@ -57,9 +59,9 @@ void init(void) {
 	initADC();
 
 	cli();
-	usbDeviceDisconnect();  /* enforce re-enumeration, do this while interrupts are disabled! */
+	usbDeviceDisconnect();  		// enforce re-enumeration, do this while interrupts are disabled!
     i = 0;
-    while(--i) {             /* fake USB disconnect for > 250 ms */
+    while(--i) {             		// fake USB disconnect for > 250 ms
         _delay_ms(1);
     }
     usbDeviceConnect();
@@ -91,8 +93,8 @@ static inline void initTimers(void) {
 	TCNT2 = 0;										// reset TCNT2
 	TIMSK2 |= _BV(TOIE2);							// enable TCNT2 overflow
 
-	TCCR2B &= ~(_BV(CS22) | _BV(CS21) | _BV(CS20));	// clear timer1 clock source
-	TCCR2B |= (_BV(CS22) | _BV(CS21));				// set timer1 clock source to Fclk/256
+	TCCR2B &= ~(_BV(CS22) | _BV(CS21) | _BV(CS20));	// clear timer2 clock source
+	TCCR2B |= (_BV(CS22) | _BV(CS21));				// set timer2 clock source to Fclk/256
 }
 
 static inline void initADC(void) {
@@ -128,7 +130,7 @@ static inline void initHW(void) {
 
 ISR(ADC_vect) {
 	// ADC result of 0x1e1 corresponds to an HV of 50V.  Ignore the two LSBs to create a bit of deadband
-	//  and improve noise-immunity (there's gonna be noise)
+	//  and improve noise-immunity.
 	if (ADCH > 0x20) {
 		// voltage is too high!  back off.
 		ICR1 = ICR1--;
@@ -194,19 +196,28 @@ void update_time(void) {
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 usbRequest_t    *rq = (void *)data;
 
-    if((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR){
-        if(rq->bRequest == CUSTOM_RQ_SET_STATUS){
-            if(rq->wValue.bytes[0] & 1){    /* set LED */
-                charmap[0] = '0';
-            }else{                          /* clear LED */
-                charmap[0] = 'X';
-            }
-        }else if(rq->bRequest == CUSTOM_RQ_GET_STATUS){
-            static uchar dataBuffer[1];     /* buffer must stay valid when usbFunctionSetup returns */
-            dataBuffer[0] = 0;
-            usbMsgPtr = dataBuffer;         /* tell the driver which data to return */
-            return 1;                       /* tell the driver to send 1 byte */
-        }
+    if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR) {
+    	switch (rq->bRequest) {
+    	case CUSTOM_RQ_SET_STATE:
+    		if (rq->wValue.bytes[0] & 1) {
+				charmap[0] = 'X';
+    		} else {
+    			charmap[0] = 'O';
+    		}
+    		return 0;
+    	case CUSTOM_RQ_GET_STATE:
+    		usbMsgPtr = charmap;
+    		return 1;
+    	case CUSTOM_RQ_SET_BUFFER:
+    		currentPosition = 0;
+    		bytesRemaining = rq->wLength.word;
+    		if (bytesRemaining > sizeof(charmap))
+    			bytesRemaining = sizeof(charmap);
+    		return USB_NO_MSG;
+    	case CUSTOM_RQ_GET_BUFFER:
+    		usbMsgPtr = charmap;
+    		return 4;
+    	}
     } else {
         /* class requests USBRQ_HID_GET_REPORT and USBRQ_HID_SET_REPORT are
          * not implemented since we never call them. The operating system
@@ -214,6 +225,16 @@ usbRequest_t    *rq = (void *)data;
          */
     }
     return 0;   /* default for not implemented requests: return no data back to host */
+}
+
+uchar usbFunctionWrite(uchar *data, uchar len) {
+	uchar i;
+	if (len > bytesRemaining)
+		len = bytesRemaining;
+	bytesRemaining -= len;
+	for(i = 0; i < len; i++)
+		charmap[currentPosition++] = data[i];
+	return bytesRemaining == 0;
 }
 
 void do_display(void) {
@@ -235,10 +256,10 @@ void do_display(void) {
 int16_t main(void) {
 	init();
 
-	charmap[0] = 'X';
-	charmap[1] = 'X';
-	charmap[2] = 'X';
-	charmap[3] = 'X';
+	charmap[0] = 'F';
+	charmap[1] = 'S';
+	charmap[2] = 'C';
+	charmap[3] = 'K';
 
     for (;;) {              /* main event loop */
         usbPoll();

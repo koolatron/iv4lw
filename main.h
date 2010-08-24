@@ -10,8 +10,12 @@
 #define STATE_WORD 10
 #define STATE_TIME 20
 
-#define CUSTOM_RQ_SET_STATUS    1
-#define CUSTOM_RQ_GET_STATUS    2
+#define CUSTOM_RQ_SET_STATE	    1
+#define CUSTOM_RQ_GET_STATE	    2
+#define CUSTOM_RQ_SET_TIME		3
+#define CUSTOM_RQ_GET_TIME		4
+#define CUSTOM_RQ_SET_BUFFER	5
+#define CUSTOM_RQ_GET_BUFFER	6
 
 int16_t main(void);
 void init(void);
