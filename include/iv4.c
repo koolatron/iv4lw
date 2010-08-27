@@ -4,7 +4,7 @@
 #include "iv4.h"
 
 static const uint8_t chartable[44][3] PROGMEM = {
-  {blank},
+  {blank},    // '/'
   {char_0},
   {char_1},
   {char_2},
@@ -15,13 +15,13 @@ static const uint8_t chartable[44][3] PROGMEM = {
   {char_7},
   {char_8},
   {char_9},
-  {char_A},
-  {char_B},
-  {char_C},
-  {char_D},
-  {char_E},
-  {char_F},
-  {char_all},
+  {char_A},   // ':'
+  {char_B},   // ';'
+  {char_C},   // '<'
+  {char_D},   // '='
+  {char_E},   // '>'
+  {char_F},   // '?'
+  {char_all}, // '@'
   {char_A},
   {char_B},
   {char_C},

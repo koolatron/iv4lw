@@ -12,10 +12,21 @@
 
 #define CUSTOM_RQ_SET_STATE	    1
 #define CUSTOM_RQ_GET_STATE	    2
-#define CUSTOM_RQ_SET_TIME		3
-#define CUSTOM_RQ_GET_TIME		4
-#define CUSTOM_RQ_SET_BUFFER	5
-#define CUSTOM_RQ_GET_BUFFER	6
+#define CUSTOM_RQ_SET_BUFFER	3
+#define CUSTOM_RQ_GET_BUFFER	4
+#define CUSTOM_RQ_SET_HOURS		5
+#define CUSTOM_RQ_GET_HOURS		6
+#define CUSTOM_RQ_SET_MINS		7
+#define CUSTOM_RQ_GET_MINS		8
+#define CUSTOM_RQ_SET_SECS		9
+#define CUSTOM_RQ_GET_SECS		10
+
+typedef struct {
+	uint8_t ticks;
+	uint8_t seconds;
+	uint8_t minutes;
+	uint8_t hours;
+} utime_t;
 
 int16_t main(void);
 void init(void);
