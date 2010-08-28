@@ -7,9 +7,6 @@
 
 #define F_CPU 16000000
 
-#define STATE_WORD 10
-#define STATE_TIME 20
-
 #define CUSTOM_RQ_SET_STATE	    1
 #define CUSTOM_RQ_GET_STATE	    2
 #define CUSTOM_RQ_SET_BUFFER	3
@@ -34,6 +31,7 @@ static inline void initHW(void);
 static inline void initTimers(void);
 static inline void initADC(void);
 uint8_t prng_8(int32_t* x);
+void update_time(void);
+void display_time(void);
 void do_display(void);
 void gen_word(void);
-void update_time(void);
