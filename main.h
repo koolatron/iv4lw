@@ -17,12 +17,19 @@
 #define CUSTOM_RQ_GET_MINS		8
 #define CUSTOM_RQ_SET_SECS		9
 #define CUSTOM_RQ_GET_SECS		10
+#define CUSTOM_RQ_SET_TIME		11
+#define CUSTOM_RQ_GET_TIME		12
 
 typedef struct {
 	uint8_t ticks;
 	uint8_t seconds;
 	uint8_t minutes;
 	uint8_t hours;
+} time_t;
+
+typedef union {
+	uint8_t raw[4];
+	time_t time;
 } utime_t;
 
 int16_t main(void);
@@ -33,5 +40,7 @@ static inline void initADC(void);
 uint8_t prng_8(int32_t* x);
 void update_time(void);
 void display_time(void);
+void set_buffer(void);
+void set_display_buffer(uint8_t* buffer);
 void do_display(void);
 void gen_word(void);

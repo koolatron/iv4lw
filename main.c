@@ -18,11 +18,15 @@ const int32_t EEMEM lastseed = 0xDEADBEEF;
 volatile uint8_t up;                // Flag for signaling display updates from timer2 interrupt
 
 uint8_t k;                          // grid mux counter
+uint8_t b1, b2, b3;					// buttons
 uint8_t bitmap[4][3];               // Buffer for literal bitfields that go to the shift register
-uint8_t charmap[4];                 // Buffer for logical characters
+uint8_t charmap[4];                 // Backing buffer for logical characters
+uint8_t timemap[4];					// Backing buffer for time values
 uint8_t stateReg;                   // Store global state
 utime_t timeReg;                    // Store global time (HH:MM:SS:ticks)
-int32_t stx;                        // PRNG state variable.  We never return this directly.
+int32_t stx;                        // PRNG state variable - We never return this directly
+uint8_t *usbWritePtr;               // Pointer to a buffer where we intend to recieve data
+uint8_t *displayBuffer;				// Pointer the the buffer we currently want to display
 
 static uchar currentPosition, bytesRemaining;
 
@@ -170,37 +174,32 @@ void gen_word(void) {
 }
 
 void update_time(void) {
-	timeReg.ticks += 1;
+	timeReg.time.ticks += 1;
 
-	if (timeReg.ticks == 250) {  // 250 ticks in a second
-		timeReg.seconds++;
-		timeReg.ticks = 0;
+	if (timeReg.time.ticks == 250) {  // 250 ticks in a second
+		timeReg.time.seconds++;
+		timeReg.time.ticks = 0;
 	}
-	if (timeReg.seconds == 60) { // 60 seconds in a minute
-		timeReg.minutes++;
-		timeReg.seconds = 0;
+	if (timeReg.time.seconds == 60) { // 60 seconds in a minute
+		timeReg.time.minutes++;
+		timeReg.time.seconds = 0;
 	}
-	if (timeReg.minutes == 60) { // 60 minutes in an hour
-		timeReg.hours++;
-		timeReg.minutes = 0;
+	if (timeReg.time.minutes == 60) { // 60 minutes in an hour
+		timeReg.time.hours++;
+		timeReg.time.minutes = 0;
 	}
-	if (timeReg.hours == 24) {   // count 24-hours for now
-		timeReg.hours = 0;
+	if (timeReg.time.hours == 24) {   // count 24-hours for now
+		timeReg.time.hours = 0;
 	}
+
+	timemap[3] = ((timeReg.time.minutes) % 10) + 48;
+	timemap[2] = ((timeReg.time.minutes) / 10) + 48;
+	timemap[1] = ((timeReg.time.hours) % 10) + 48;
+	timemap[0] = ((timeReg.time.hours) / 10) + 48;
 }
 
-void display_time(void) {
-	// secs+mins for now
-	uint8_t secondsOnes = (timeReg.seconds) % 10;
-	uint8_t secondsTens = (timeReg.seconds) / 10;
-	uint8_t minutesOnes = (timeReg.minutes) % 10;
-	uint8_t minutesTens = (timeReg.minutes) / 10;
-
-	charmap[3] = secondsOnes + 48; // using itoa here for some reason clobbers the buffer
-	charmap[2] = secondsTens + 48;
-	charmap[1] = minutesOnes + 48;
-	charmap[0] = minutesTens + 48;
-
+void set_display_buffer(uint8_t* buffer) {
+	displayBuffer = buffer;
 }
 
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
@@ -219,28 +218,21 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 			bytesRemaining = rq->wLength.word;
 			if (bytesRemaining > sizeof(charmap))
 				bytesRemaining = sizeof(charmap);
+			usbWritePtr = charmap;
 			return USB_NO_MSG;
 		case CUSTOM_RQ_GET_BUFFER:
 			usbMsgPtr = charmap;
 			return 4;
-		case CUSTOM_RQ_SET_HOURS:
-			timeReg.hours = rq->wValue.bytes[0];
-			return 0;
-		case CUSTOM_RQ_GET_HOURS:
-			usbMsgPtr = &timeReg.hours;
-			return 1;
-		case CUSTOM_RQ_SET_MINS:
-			timeReg.minutes = rq->wValue.bytes[0];
-			return 0;
-		case CUSTOM_RQ_GET_MINS:
-			usbMsgPtr = &timeReg.minutes;
-			return 1;
-		case CUSTOM_RQ_SET_SECS:
-			timeReg.seconds = rq->wValue.bytes[0];
-			return 0;
-		case CUSTOM_RQ_GET_SECS:
-			usbMsgPtr = &timeReg.seconds;
-			return 1;
+		case CUSTOM_RQ_SET_TIME:
+			currentPosition = 0;
+			bytesRemaining = rq->wLength.word;
+			if (bytesRemaining > sizeof(timeReg.raw))
+				bytesRemaining = sizeof(timeReg.raw);
+			usbWritePtr = timeReg.raw;
+			return USB_NO_MSG;
+		case CUSTOM_RQ_GET_TIME:
+			usbMsgPtr = timeReg.raw;
+			return 4;
 		}
 	} else {
 		/* class requests USBRQ_HID_GET_REPORT and USBRQ_HID_SET_REPORT are
@@ -257,17 +249,16 @@ uchar usbFunctionWrite(uchar *data, uchar len) {
 		len = bytesRemaining;
 	bytesRemaining -= len;
 	for (i = 0; i < len; i++)
-		charmap[currentPosition++] = data[i];
+		usbWritePtr[currentPosition++] = data[i];
 	return bytesRemaining == 0;
 }
 
 void do_display(void) {
 	k++;
-	if (k >= 4) {
+	if (k >= 4)
 		k = 0;
-	}
 
-	bufferChar(bitmap[k], (uint8_t) charmap[k]);
+	bufferChar(bitmap[k], (uint8_t) displayBuffer[k]);
 
 	SHRBlank();
 	selectGrid(bitmap[k], k);
@@ -306,24 +297,27 @@ void do_buttons(void) {
 int16_t main(void) {
 	init();
 
-	charmap[0] = 'A';
-	charmap[1] = 'B';
-	charmap[2] = 'C';
-	charmap[3] = 'D';
+	stateReg = 'T';
 
 	for (;;) { /* main event loop */
 		usbPoll();
 
 		if (up == 1) {
-			update_time();
-			do_display();
-			do_buttons();
-			up = 0;
+			update_time();	// Update time registers
+			do_display();	// Update display register
+			do_buttons();	// Update button registers
+			up = 0;			// Get ready for next update
 		}
 
-		if (stateReg == 'T') {
-			display_time();
-		} else {
+		switch (stateReg) {
+		case 'T':
+			set_display_buffer(timemap);
+			break;
+		case 'U':
+			set_display_buffer(charmap);
+			break;
+		default:
+			break;
 		}
 	}
 
