@@ -19,6 +19,8 @@
 #define CUSTOM_RQ_GET_SECS		10
 #define CUSTOM_RQ_SET_TIME		11
 #define CUSTOM_RQ_GET_TIME		12
+#define CUSTOM_RQ_SET_RAW		13
+#define CUSTOM_RQ_GET_RAW		14
 
 typedef struct {
 	uint8_t ticks;

@@ -176,11 +176,21 @@ void gen_word(void) {
 void update_time(void) {
 	timeReg.time.ticks += 1;
 
+	/* We do some hackery here.  Measured accuracy at 16 MHz with this setup is about
+	 * 0.014% - it's close, but not good enough to keep the clock from losing a few minutes
+	 * over the course of a day.  Crunching the numbers, it loses 8.75*16 = 140 uS each second.
+	 * Adding 8 to the timer count for every second, and 0.75*60 = 45 to it each minute
+	 * corrects this well enough to push the accuracy up to about 0.0002%.  It'll gain about
+	 * a minute a year.
+	 */
+
 	if (timeReg.time.ticks == 250) {  // 250 ticks in a second
+		TCNT2 += 7;                   // Catch our timer up with the real world
 		timeReg.time.seconds++;
 		timeReg.time.ticks = 0;
 	}
 	if (timeReg.time.seconds == 60) { // 60 seconds in a minute
+		TCNT2 += 10;                  // Catch our timer up with the real world (again)
 		timeReg.time.minutes++;
 		timeReg.time.seconds = 0;
 	}
