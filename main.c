@@ -247,13 +247,10 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 			displayBuffer[rq->wValue.bytes[0]] = 0xff;
 			currentPosition = 0;
 			bytesRemaining = rq->wLength.word;
-			if (bytesRemaining > 3)
-				bytesRemaining = 3;
+			if (bytesRemaining > sizeof(bitmap[rq->wValue.bytes[0]]))
+				bytesRemaining = sizeof(bitmap[rq->wValue.bytes[0]]);
 			usbWritePtr = bitmap[rq->wValue.bytes[0]];
 			return USB_NO_MSG;
-		case CUSTOM_RQ_GET_ADC:
-			usbMsgPtr = &ICR1;
-			return 1;
 		}
 	} else {
 		/* class requests USBRQ_HID_GET_REPORT and USBRQ_HID_SET_REPORT are
