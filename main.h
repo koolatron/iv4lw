@@ -14,8 +14,7 @@
 #define CUSTOM_RQ_SET_TIME		11
 #define CUSTOM_RQ_GET_TIME		12
 #define CUSTOM_RQ_SET_RAW		13
-#define CUSTOM_RQ_SET_ADC		14
-#define CUSTOM_RQ_GET_ADC		15
+#define CUSTOM_RQ_GET_ADC		14
 
 typedef struct {
 	uint8_t ticks;
@@ -34,10 +33,9 @@ void init(void);
 static inline void initHW(void);
 static inline void initTimers(void);
 static inline void initADC(void);
-uint8_t prng_8(int32_t* x);
 void update_time(void);
 void display_time(void);
 void set_buffer(void);
-void set_display_buffer(uint8_t* buffer);
+static inline void set_display_buffer(uint8_t* buffer);
 void do_display(void);
-void gen_word(void);
+void do_buttons(void);

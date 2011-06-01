@@ -168,6 +168,7 @@ OBJDUMP=avr-objdump
 SIZE=avr-size
 AVRDUDE=avrdude
 REMOVE=rm -f
+FLASHUTIL=./bootloadHID
 
 ##### automatic target names ####
 TRG=$(PROJECTNAME).out
@@ -223,6 +224,8 @@ stats: $(TRG)
 
 hex: $(HEXTRG)
 
+writeflashusb:
+	$(FLASHUTIL) $(HEXROMTRG)
 
 writeflash: hex
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)   \

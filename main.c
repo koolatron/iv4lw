@@ -14,8 +14,9 @@
 #include "include/usb/usbconfig.h"	// USB configuration header
 #include "include/usb/usbdrv.h"		// USB driver header
 
-const int32_t EEMEM lastseed = 0xDEADBEEF;
+// const int32_t EEMEM lastseed = 0xDEADBEEF;
 volatile uint8_t up;                // Flag for signaling display updates from timer2 interrupt
+volatile uint8_t adcValue;
 
 uint8_t k;                          // grid mux counter
 uint8_t b1, b2, b3;					// buttons
@@ -49,10 +50,10 @@ void init(void) {
 
 	// NVRAM: get last used random seed, modify, and write back to NVRAM
 	eeprom_busy_wait();
-	eeprom_read_block((void*) &stx, (const void*) &lastseed, 4);
+	// eeprom_read_block((void*) &stx, (const void*) &lastseed, 4);
 	stx += 0xF0A110AF;
 	eeprom_busy_wait();
-	eeprom_write_block((const void*) &stx, (void*) &lastseed, 4);
+	// eeprom_write_block((const void*) &stx, (void*) &lastseed, 4);
 
 	// INIT: IO ports
 	initHW();
@@ -84,7 +85,7 @@ static inline void initTimers(void) {
 	TCCR1A |= _BV(WGM11);
 	TCCR1B |= (_BV(WGM12) | _BV(WGM13));
 
-	ICR1 = 500;                     // set top count value
+	ICR1 = 220;                     // set top count value
 	OCR1A = 50;                     // set output compare value A
 	OCR1B = 0;                      // clear output compare value B
 
@@ -102,13 +103,13 @@ static inline void initTimers(void) {
 }
 
 static inline void initADC(void) {
-	ADMUX |= _BV(REFS0);            // set ADC voltage reference to external AVCC
-	ADMUX |= _BV(MUX0);             // set ADC multiplexer to ADC1, our feedback channel
-	ADMUX |= _BV(ADLAR);            // set ADC to left-adjust results
-	ADCSRA |= _BV(ADEN);            // enable ADC circuitry
-	ADCSRA |= _BV(ADIE);            // enable ADC conversion-completion interrupt
-	ADCSRA |= (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0)); // set ADC prescaler to 128
-	DIDR0 |= _BV(ADC1D);            // disable digital input buffer on ADC1
+	ADMUX |= _BV(REFS0);	// set reference to external AVCC
+	ADMUX |= _BV(ADLAR);	// left-adjust A2D results
+	ADMUX |= _BV(MUX0);		// select ADC1 as A2D input channel
+	ADCSRA |= _BV(ADEN);	// enable A2D circuitry
+	ADCSRA |= _BV(ADIE);	// enable A2D conversion-complete interrupt
+	ADCSRA |= (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0));	// set A2D prescaler to 128
+	DIDR0 |= _BV(ADC1D);	// disable digital input buffer on A2D input
 }
 
 static inline void initHW(void) {
@@ -133,16 +134,7 @@ static inline void initHW(void) {
 }
 
 ISR(ADC_vect) {
-	// ADC result of 0x1e1 corresponds to an HV of 50V.  Ignore the two LSBs to create a bit of deadband
-	//  and improve noise-immunity.
-	if (ADCH > 0x20) {
-		// voltage is too high!  back off.
-		ICR1 = ICR1--;
-	}
-	if (ADCH < 0x1c) {
-		// voltage is too low!  more power argh argh argh.
-		ICR1 = ICR1++;
-	}
+	adcValue = ADCH;
 }
 
 ISR(TIMER1_OVF_vect) {
@@ -154,35 +146,9 @@ ISR(TIMER2_OVF_vect) {
 	up = 1;
 }
 
-uint8_t prng_8(int32_t* x) {
-	// TODO: maybe obsolete this code in favor of the version in libc
-	int32_t temp = *x;
-
-	temp = (temp >> 16) + ((temp << 15) % RAND_MAX) - (temp >> 21) - ((temp
-			<< 10) % RAND_MAX);
-	if (temp < 0) {
-		temp += RAND_MAX;
-	}
-
-	*x = temp;
-
-	return (uint8_t) (temp >> 10);
-}
-
-void gen_word(void) {
-	// TODO: rewrite word-generation algorithm
-}
 
 void update_time(void) {
 	timeReg.time.ticks += 1;
-
-	/* We do some hackery here.  Measured accuracy at 16 MHz with this setup is about
-	 * 0.014% - it's close, but not good enough to keep the clock from losing a few minutes
-	 * over the course of a day.  Crunching the numbers, it loses 8.75*16 = 140 uS each second.
-	 * Adding 8 to the timer count for every second, and 0.75*60 = 45 to it each minute
-	 * corrects this well enough to push the accuracy up to about 0.0002%.  It'll gain about
-	 * a minute a year.
-	 */
 
 	if (timeReg.time.ticks == 250) {  // 250 ticks in a second
 		TCNT2 += 7;                   // Catch our timer up with the real world
@@ -208,7 +174,7 @@ void update_time(void) {
 	timemap[0] = ((timeReg.time.hours) / 10) + 48;
 }
 
-void set_display_buffer(uint8_t* buffer) {
+static inline void set_display_buffer(uint8_t* buffer) {
 	displayBuffer = buffer;
 }
 
@@ -251,6 +217,9 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 				bytesRemaining = sizeof(bitmap[rq->wValue.bytes[0]]);
 			usbWritePtr = bitmap[rq->wValue.bytes[0]];
 			return USB_NO_MSG;
+		case CUSTOM_RQ_GET_ADC:
+			usbMsgPtr = &adcValue;
+			return 1;
 		}
 	} else {
 		/* class requests USBRQ_HID_GET_REPORT and USBRQ_HID_SET_REPORT are
@@ -311,6 +280,10 @@ void do_buttons(void) {
 	}
 }
 
+void do_adc(void) {
+	ADCSRA |= _BV(ADSC);
+}
+
 /* main function */
 int16_t main(void) {
 	init();
@@ -324,6 +297,7 @@ int16_t main(void) {
 			update_time();	// Update time registers
 			do_display();	// Update display register
 			do_buttons();	// Update button registers
+			do_adc();		// Start next ADC conversion
 			up = 0;			// Get ready for next update
 		}
 
