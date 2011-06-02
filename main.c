@@ -16,7 +16,6 @@
 
 // const int32_t EEMEM lastseed = 0xDEADBEEF;
 volatile uint8_t up;                // Flag for signaling display updates from timer2 interrupt
-volatile uint8_t adcValue;
 
 uint8_t k;                          // grid mux counter
 uint8_t b1, b2, b3;					// buttons
@@ -25,6 +24,7 @@ uint8_t charmap[4];                 // Backing buffer for logical characters
 uint8_t timemap[4];					// Backing buffer for time values
 uint8_t stateReg;                   // Store global state
 utime_t timeReg;                    // Store global time (HH:MM:SS:ticks)
+uint8_t adcReg;						// Store global ADC data
 int32_t stx;                        // PRNG state variable - We never return this directly
 uint8_t *usbWritePtr;               // Pointer to a buffer where we intend to recieve data
 uint8_t *displayBuffer;				// Pointer the the buffer we currently want to display
@@ -85,8 +85,8 @@ static inline void initTimers(void) {
 	TCCR1A |= _BV(WGM11);
 	TCCR1B |= (_BV(WGM12) | _BV(WGM13));
 
-	ICR1 = 220;                     // set top count value
-	OCR1A = 50;                     // set output compare value A
+	ICR1 = 220;                     // set top count value -- controls frequency
+	OCR1A = 50;                     // set output compare value A -- controls duty cycle
 	OCR1B = 0;                      // clear output compare value B
 
 	TCCR1A |= _BV(COM1A1);          // turn on channel A PWM output, set OC1A as non-inverted PWM
@@ -96,7 +96,11 @@ static inline void initTimers(void) {
 	TCCR1B |= _BV(CS10);            // set timer1 clock source to Fclk/1
 
 	TCNT2 = 0;                      // reset TCNT2
-	TIMSK2 |= _BV(TOIE2);           // enable TCNT2 overflow
+	TIMSK2 |= _BV(OCIE2A);          // enable OCR2A CTC interrupt
+
+	TCCR2A |= _BV(WGM21);			// set timer2 to CTC mode
+
+	OCR2A = 249;					// set top count value
 
 	TCCR2B &= ~(_BV(CS22) | _BV(CS21) | _BV(CS20)); // clear timer2 clock source
 	TCCR2B |= (_BV(CS22) | _BV(CS21)); // set timer2 clock source to Fclk/256
@@ -133,16 +137,16 @@ static inline void initHW(void) {
 	DDRC &= ~_BV(1);
 }
 
+// ADC_vect is called whenever an ADC conversion completes.
 ISR(ADC_vect) {
-	adcValue = ADCH;
 }
 
+// For some insane reason, this needs to be declared.
 ISR(TIMER1_OVF_vect) {
-	// OCR1A is attached to the input of our boost convertor.
 }
 
-ISR(TIMER2_OVF_vect) {
-	TCNT2 += 6;
+// TIMER2_COMPA_vect is called on a CTC match between TCNT2 and OCR2A.
+ISR(TIMER2_COMPA_vect) {
 	up = 1;
 }
 
@@ -151,12 +155,10 @@ void update_time(void) {
 	timeReg.time.ticks += 1;
 
 	if (timeReg.time.ticks == 250) {  // 250 ticks in a second
-		TCNT2 += 7;                   // Catch our timer up with the real world
 		timeReg.time.seconds++;
 		timeReg.time.ticks = 0;
 	}
 	if (timeReg.time.seconds == 60) { // 60 seconds in a minute
-		TCNT2 += 10;                  // Catch our timer up with the real world (again)
 		timeReg.time.minutes++;
 		timeReg.time.seconds = 0;
 	}
@@ -180,6 +182,7 @@ static inline void set_display_buffer(uint8_t* buffer) {
 
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 	usbRequest_t *rq = (void *) data;
+	uint8_t adcValue;
 
 	if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR) {
 		switch (rq->bRequest) {
@@ -218,7 +221,7 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 			usbWritePtr = bitmap[rq->wValue.bytes[0]];
 			return USB_NO_MSG;
 		case CUSTOM_RQ_GET_ADC:
-			usbMsgPtr = &adcValue;
+			usbMsgPtr = &adcReg;
 			return 1;
 		}
 	} else {
@@ -281,7 +284,8 @@ void do_buttons(void) {
 }
 
 void do_adc(void) {
-	ADCSRA |= _BV(ADSC);
+	adcReg = ADCH;			// stash current ADC value
+	ADCSRA |= _BV(ADSC);	// start the next conversion
 }
 
 /* main function */

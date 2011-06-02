@@ -39,3 +39,4 @@ void set_buffer(void);
 static inline void set_display_buffer(uint8_t* buffer);
 void do_display(void);
 void do_buttons(void);
+void do_adc(void);
