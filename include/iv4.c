@@ -58,7 +58,7 @@ uint8_t* bufferBytes(uint8_t* buffer, uint8_t index) {
 }
 
 uint8_t* bufferChar(uint8_t* buffer, uint8_t index) {
-	if (index == 0xff) {  		// 0xff is a special "override" character
+	if (index == 0xff) {  		// 0xff means don't touch this character
 		return buffer;
 	}
 

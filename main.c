@@ -14,7 +14,6 @@
 #include "include/usb/usbconfig.h"	// USB configuration header
 #include "include/usb/usbdrv.h"		// USB driver header
 
-// const int32_t EEMEM lastseed = 0xDEADBEEF;
 volatile uint8_t up;                // Flag for signaling display updates from timer2 interrupt
 
 uint8_t k;                          // grid mux counter
@@ -25,7 +24,6 @@ uint8_t timemap[4];					// Backing buffer for time values
 uint8_t stateReg;                   // Store global state
 utime_t timeReg;                    // Store global time (HH:MM:SS:ticks)
 uint8_t adcReg;						// Store global ADC data
-int32_t stx;                        // PRNG state variable - We never return this directly
 uint8_t *usbWritePtr;               // Pointer to a buffer where we intend to recieve data
 uint8_t *displayBuffer;				// Pointer the the buffer we currently want to display
 
@@ -47,13 +45,6 @@ PROGMEM char usbHidReportDescriptor[22] = {
 // general device initialization
 void init(void) {
 	uchar i;
-
-	// NVRAM: get last used random seed, modify, and write back to NVRAM
-	eeprom_busy_wait();
-	// eeprom_read_block((void*) &stx, (const void*) &lastseed, 4);
-	stx += 0xF0A110AF;
-	eeprom_busy_wait();
-	// eeprom_write_block((const void*) &stx, (void*) &lastseed, 4);
 
 	// INIT: IO ports
 	initHW();
@@ -79,14 +70,14 @@ void init(void) {
 
 static inline void initTimers(void) {
 	TCNT1 = 0;                      // reset TCNT1
-	TIMSK1 |= _BV(TOIE1);           // enable TCNT1 overflow
+	TIMSK1 |= _BV(TOIE1);           // ???: enable TCNT1 overflow
 
 	TCCR1A &= ~(_BV(WGM10));        // set PWM mode with ICR top-count
 	TCCR1A |= _BV(WGM11);
 	TCCR1B |= (_BV(WGM12) | _BV(WGM13));
 
 	ICR1 = 220;                     // set top count value -- controls frequency
-	OCR1A = 50;                     // set output compare value A -- controls duty cycle
+	OCR1A = 20;                     // set output compare value A -- controls duty cycle
 	OCR1B = 0;                      // clear output compare value B
 
 	TCCR1A |= _BV(COM1A1);          // turn on channel A PWM output, set OC1A as non-inverted PWM
@@ -139,14 +130,24 @@ static inline void initHW(void) {
 
 // ADC_vect is called whenever an ADC conversion completes.
 ISR(ADC_vect) {
+	// Bang bang, my baby shot me down.  Maybe even take care of this in
+	// mainline code.
+	if (ADCH < 0x5C) {
+		OCR1A += 1;
+	}
+	if (ADCH > 0x68) {
+		OCR1A -= 1;
+	}
 }
 
-// For some insane reason, this needs to be declared.
+// For some insane reason, this needs to be declared or things break
 ISR(TIMER1_OVF_vect) {
 }
 
 // TIMER2_COMPA_vect is called on a CTC match between TCNT2 and OCR2A.
 ISR(TIMER2_COMPA_vect) {
+	// Display servicing, button polling, etc are all handled in mainline
+	// code, because we can't be allowed to miss a USB interrupt.
 	up = 1;
 }
 
