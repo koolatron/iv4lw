@@ -4,4 +4,4 @@ The source to drive the iv4lw project.
 
 This code targets the atmega328p microcontroller and can be compiled with avr-gcc in Linux.  Makefile changes should be possible to get it building on Windows, but this is untested.
 
-This project contains code written by Pascal Stang (parts of avrlib), and Objective Development (the V-USB driver).
+This project contains code written by Objective Development (the V-USB driver).
