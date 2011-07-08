@@ -130,12 +130,14 @@ static inline void initHW(void) {
 
 // ADC_vect is called whenever an ADC conversion completes.
 ISR(ADC_vect) {
-	// Bang bang, my baby shot me down.  Maybe even take care of this in
-	// mainline code.
+	// Bang bang, my baby shot me down.
+	// Maybe take care of this in mainline code.
 	if (ADCH < 0x5C) {
+//	if (ADCH < 0x73) {  // 55V
 		OCR1A += 1;
 	}
 	if (ADCH > 0x68) {
+//	if (ADCH > 0x7E) { // 55V
 		OCR1A -= 1;
 	}
 }
