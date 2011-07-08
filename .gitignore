@@ -1,3 +1,7 @@
+.settings/
+.cdtproject
+.cproject
+.project
 *.[oa]
 *.lst
 *.hex
