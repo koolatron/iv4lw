@@ -100,7 +100,7 @@ static inline void initTimers(void) {
 static inline void initADC(void) {
 	ADMUX |= _BV(REFS0);	// set reference to external AVCC
 	ADMUX |= _BV(ADLAR);	// left-adjust A2D results
-	ADMUX |= _BV(MUX0);		// select ADC1 as A2D input channel
+	ADMUX |= (_BV(MUX0) | _BV(MUX2));	// select ADC5 as A2D input channel
 	ADCSRA |= _BV(ADEN);	// enable A2D circuitry
 	ADCSRA |= _BV(ADIE);	// enable A2D conversion-complete interrupt
 	ADCSRA |= (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0));	// set A2D prescaler to 128
@@ -125,7 +125,7 @@ static inline void initHW(void) {
 	PORTD &= ~(_BV(1) | _BV(2));
 
 	// INIT: ADC input
-	DDRC &= ~_BV(1);
+	DDRC &= ~_BV(5);
 }
 
 // ADC_vect is called whenever an ADC conversion completes.
@@ -295,6 +295,9 @@ void do_adc(void) {
 int16_t main(void) {
 	init();
 
+	DDRD |= _BV(5);
+	PORTD |= _BV(5);
+
 	stateReg = 'T';
 
 	for (;;) { /* main event loop */
@@ -303,8 +306,9 @@ int16_t main(void) {
 		if (up == 1) {
 			update_time();	// Update time registers
 			do_display();	// Update display register
-			do_buttons();	// Update button registers
+			//do_buttons();	// Update button registers
 			do_adc();		// Start next ADC conversion
+
 			up = 0;			// Get ready for next update
 		}
 

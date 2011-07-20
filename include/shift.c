@@ -15,10 +15,12 @@ void initSHR(void) {
 
 inline void SHRBlank(void) {
 	SHR_PORT |= (unsigned char) (1 << BLANK);
+	asm("nop");
 }
 
 inline void SHRUnblank(void) {
 	SHR_PORT &= (unsigned char) ~(1 << BLANK);
+	asm("nop");
 }
 
 void SHRSendByte(unsigned char byte) {
@@ -26,12 +28,16 @@ void SHRSendByte(unsigned char byte) {
 
 	for (i = 7; i >= 0; i--) {
 		SHR_PORT &= (unsigned char) ~((1 << DATA) | (1 << CLOCK));
+		asm("nop");
 		SHR_PORT |= (unsigned char) (((byte >> i) & 1) << DATA);
+		asm("nop");
 		SHR_PORT |= (unsigned char) (1 << CLOCK);
+		asm("nop");
 	}
 
-	asm("nop");
 	SHR_PORT &= (unsigned char) ~(1 << CLOCK);
+	asm("nop");
+
 }
 
 void SHRSendBuffer(unsigned char* buffer, unsigned char n) {
@@ -44,6 +50,7 @@ inline void SHRLatch(void) {
 	SHR_PORT |= (unsigned char) (1 << LATCH);
 	asm("nop");
 	SHR_PORT &= (unsigned char) ~(1 << LATCH);
+	asm("nop");
 }
 
 void SHRReset(void) {

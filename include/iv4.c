@@ -110,10 +110,10 @@ uint8_t* selectGrid(uint8_t* buffer, uint8_t n) {
 		buffer[0] |= 0x04;
 	}
 	if (n == 2) {
-		buffer[1] |= 0x01;
+		buffer[2] |= 0x40;
 	}
 	if (n == 3) {
-		buffer[1] |= 0x02;
+		buffer[2] |= 0x80;
 	}
 
 	return buffer;
