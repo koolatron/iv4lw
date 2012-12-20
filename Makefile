@@ -84,7 +84,7 @@ PROJECTNAME=iv4lw
 # (list all files to compile, e.g. 'a.c b.cpp as.S'):
 # Use .cc, .cpp or .C suffix for C++ files, use .S 
 # (NOT .s !!!) for assembly source code files.
-PRJSRC=main.c include/shift.c include/iv4.c include/usb/usbdrv.c include/usb/usbdrvasm.S
+PRJSRC=main.c include/pairs.c include/shift.c include/iv4.c include/usb/usbdrv.c include/usb/usbdrvasm.S
 
 # additional includes (e.g. -I/path/to/mydir)
 INC=
@@ -175,6 +175,7 @@ TRG=$(PROJECTNAME).out
 DUMPTRG=$(PROJECTNAME).s
 
 HEXROMTRG=$(PROJECTNAME).hex 
+EEROMTRG=$(PROJECTNAME).ee.hex
 HEXTRG=$(HEXROMTRG) $(PROJECTNAME).ee.hex
 GDBINITFILE=gdbinit-$(PROJECTNAME)
 
@@ -230,7 +231,8 @@ writeflashusb:
 writeflash: hex
 	$(AVRDUDE) -c $(AVRDUDE_PROGRAMMERID)   \
 	 -p $(PROGRAMMER_MCU) -P $(AVRDUDE_PORT) -e        \
-	 -U flash:w:$(HEXROMTRG)
+	 -U flash:w:$(HEXROMTRG) \
+	 -U eeprom:w:$(EEROMTRG)
 
 install: writeflash
 

@@ -1,8 +1,8 @@
 #include <avr/pgmspace.h>
 #include <stdint.h>
 
-#define OFF 5
-#define ON 0
+#define OFF 0
+#define ON 20
 #define RAND_MAX 0x7FFFFFFF
 
 #define F_CPU 16000000
@@ -29,14 +29,18 @@ typedef union {
 } utime_t;
 
 int16_t main(void);
+
 void init(void);
-static inline void initHW(void);
+
+static inline void initIO(void);
 static inline void initTimers(void);
 static inline void initADC(void);
+
 void update_time(void);
 void display_time(void);
-void set_buffer(void);
+
 static inline void set_display_buffer(uint8_t* buffer);
+
 void do_display(void);
 void do_buttons(void);
 void do_adc(void);

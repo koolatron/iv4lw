@@ -3,16 +3,19 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <avr/io.h>
+#include <string.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #include <util/delay.h>
 
 #include "include/iv4.h"      		// IV4 bitfield defines and functions
+#include "include/pairs.h"			// IV4 letter pair data
 #include "include/shift.h"    		// Generic shift register library
-#include "include/words.c"    		// Letter-pair data
 #include "include/usb/usbconfig.h"	// USB configuration header
 #include "include/usb/usbdrv.h"		// USB driver header
+
+uint32_t EEMEM seed = 0xDEADBEEF;   // Random seed, lives in EEPROM
 
 volatile uint8_t up;                // Flag for signaling display updates from timer2 interrupt
 
@@ -24,6 +27,8 @@ uint8_t timemap[4];					// Backing buffer for time values
 uint8_t stateReg;                   // Store global state
 utime_t timeReg;                    // Store global time (HH:MM:SS:ticks)
 uint8_t adcReg;						// Store global ADC data
+uint8_t waitTicks;					// global counter to manage waits
+uint8_t exitState;					// state to exit waits to
 uint8_t *usbWritePtr;               // Pointer to a buffer where we intend to recieve data
 uint8_t *displayBuffer;				// Pointer the the buffer we currently want to display
 
@@ -45,9 +50,10 @@ PROGMEM char usbHidReportDescriptor[22] = {
 // general device initialization
 void init(void) {
 	uchar i;
+    uint32_t seed;
 
 	// INIT: IO ports
-	initHW();
+	initIO();
 
 	// INIT: all timers
 	initTimers();
@@ -55,10 +61,17 @@ void init(void) {
 	// INIT: ADC stuff
 	initADC();
 
+    // Generate a new random seed
+    seed = eeprom_read_dword( (uint32_t *) 0 );
+    seed += 1;
+    eeprom_write_dword( (uint32_t *) 0, seed );
+    srandom( seed );
+
+    // Fake a USB device disconnect
 	cli();
-	usbDeviceDisconnect();          // enforce re-enumeration, do this while interrupts are disabled!
+	usbDeviceDisconnect();
 	i = 0;
-	while (--i) {                   // fake USB disconnect for > 250 ms
+	while (--i) {
 		_delay_ms(1);
 	}
 	usbDeviceConnect();
@@ -98,7 +111,7 @@ static inline void initTimers(void) {
 }
 
 static inline void initADC(void) {
-	ADMUX |= _BV(REFS0);	// set reference to external AVCC
+    ADMUX |= _BV(REFS0);    // set reference to external AVCC
 	ADMUX |= _BV(ADLAR);	// left-adjust A2D results
 	ADMUX |= (_BV(MUX0) | _BV(MUX2));	// select ADC5 as A2D input channel
 	ADCSRA |= _BV(ADEN);	// enable A2D circuitry
@@ -107,7 +120,7 @@ static inline void initADC(void) {
 	DIDR0 |= _BV(ADC1D);	// disable digital input buffer on A2D input
 }
 
-static inline void initHW(void) {
+static inline void initIO(void) {
 	// INIT: All pins output, all pins low
 	PORTB = 0x00;
 	PORTC = 0x00;
@@ -130,8 +143,6 @@ static inline void initHW(void) {
 
 // ADC_vect is called whenever an ADC conversion completes.
 ISR(ADC_vect) {
-	// Bang bang, my baby shot me down.
-	// Maybe take care of this in mainline code.
 	if (ADCH < 0x5C) {
 //	if (ADCH < 0x73) {  // 55V
 		OCR1A += 1;
@@ -148,8 +159,6 @@ ISR(TIMER1_OVF_vect) {
 
 // TIMER2_COMPA_vect is called on a CTC match between TCNT2 and OCR2A.
 ISR(TIMER2_COMPA_vect) {
-	// Display servicing, button polling, etc are all handled in mainline
-	// code, because we can't be allowed to miss a USB interrupt.
 	up = 1;
 }
 
@@ -185,7 +194,6 @@ static inline void set_display_buffer(uint8_t* buffer) {
 
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
 	usbRequest_t *rq = (void *) data;
-	uint8_t adcValue;
 
 	if ((rq->bmRequestType & USBRQ_TYPE_MASK) == USBRQ_TYPE_VENDOR) {
 		switch (rq->bRequest) {
@@ -261,34 +269,80 @@ void do_display(void) {
 }
 
 void do_buttons(void) {
-	if (PINB & 0x08) {
-		if (b1 < OFF)
+	if (bit_is_clear(PINB, 3)) {
+		if ( b1 != ON ) {
 			b1++;
+		}
 	} else {
-		if (b1 > ON)
-			b1--;
+		b1 = OFF;
 	}
 
-	if (PINB & 0x10) {
-		if (b2 < OFF)
+	if (bit_is_clear(PINB, 4)) {
+		if ( b2 != ON ) {
 			b2++;
+		}
 	} else {
-		if (b2 > ON)
-			b2--;
+		b2 = OFF;
 	}
 
-	if (PINB & 0x20) {
-		if (b3 < OFF)
+	if (bit_is_clear(PINB, 5)) {
+		if ( b3 != ON ) {
 			b3++;
+		}
 	} else {
-		if (b3 > ON)
-			b3--;
+		b3 = OFF;
 	}
 }
 
+// All we do here is start a new conversion.  An interrupt vector
+// handles actually using this information.
 void do_adc(void) {
 	adcReg = ADCH;			// stash current ADC value
-	ADCSRA |= _BV(ADSC);	// start the next conversion
+    if ( bit_is_clear( ADCSRA, ADIF ) ) {
+        ADCSRA |= _BV(ADSC);	// start the next conversion
+    }
+}
+
+// This is an extravagant waste of resources
+uint8_t random_8(void) {
+    uint32_t random_32;
+    uint8_t random_8;
+
+    random_32 = random();
+    random_8 = (uint8_t)random_32;
+
+    return random_8;
+}
+
+uint8_t* rand_word( uint8_t* buf ) {
+	uint8_t ab, bc, cd;
+	uint8_t a, b, c, d;
+
+	uint8_t done = 0;
+
+	while ( !done ) {
+		ab = random_8() % 216;
+		cd = random_8() % 239;
+
+		b = pgm_read_byte( &(first_pairs[ab][1]) );
+	    c = pgm_read_byte( &(last_pairs[cd][0]) );
+
+	    for (bc=0; bc<254; bc++) {
+	    	if ( (pgm_read_byte( &(middle_pairs[bc][0]) ) == b) && (pgm_read_byte( &(middle_pairs[bc][1]) ) == c) ) {
+	    		a = pgm_read_byte( &(first_pairs[ab][0]) );
+	    	    d = pgm_read_byte( &(last_pairs[cd][1]) );
+
+	    		done = 1;
+	    	}
+	    }
+	}
+
+	buf[0] = a;
+	buf[1] = b;
+	buf[2] = c;
+	buf[3] = d;
+
+	return buf;
 }
 
 /* main function */
@@ -299,6 +353,7 @@ int16_t main(void) {
 	PORTD |= _BV(5);
 
 	stateReg = 'T';
+	exitState = 'T';
 
 	for (;;) { /* main event loop */
 		usbPoll();
@@ -306,8 +361,12 @@ int16_t main(void) {
 		if (up == 1) {
 			update_time();	// Update time registers
 			do_display();	// Update display register
-			//do_buttons();	// Update button registers
+			do_buttons();	// Update button registers
 			do_adc();		// Start next ADC conversion
+
+			if (waitTicks > 0) {
+				waitTicks--;
+			}
 
 			up = 0;			// Get ready for next update
 		}
@@ -315,9 +374,62 @@ int16_t main(void) {
 		switch (stateReg) {
 		case 'T':
 			set_display_buffer(timemap);
+
+			if (b3 == ON) {
+				b3 = OFF;
+				timeReg.time.hours++;
+			}
+			if (b2 == ON) {
+				b2 = OFF;
+				timeReg.time.minutes++;
+			}
+			if (b1 == ON) {
+				b1 = OFF;
+
+                set_display_buffer(charmap);
+                strcpy_PF( (char *)charmap, PSTR("WORD") );
+                waitTicks = 250;
+                exitState = 'U';
+				stateReg = 'W';
+			}
+
 			break;
 		case 'U':
 			set_display_buffer(charmap);
+
+            rand_word( charmap );
+            waitTicks = 250;
+            exitState = 'U';
+            stateReg = 'W';
+
+			if (b3 == ON) {
+				b3 = OFF;
+			}
+			if (b2 == ON) {
+				b2 = OFF;
+			}
+			if (b1 == ON) {
+				b1 = OFF;
+
+                set_display_buffer(charmap);
+                strcpy_PF( (char *)charmap, PSTR("TIME") );
+                waitTicks = 250;
+                exitState = 'T';
+				stateReg = 'W';
+			}
+
+			break;
+		case 'V':
+			set_display_buffer(charmap);
+			break;
+		case 'W': // this is a wait state -- just chill out.
+			if ( b1 == ON ) {
+				waitTicks = 0;
+			}
+
+			if (waitTicks == 0) {
+				stateReg = exitState;
+			}
 			break;
 		default:
 			break;
