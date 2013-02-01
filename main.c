@@ -130,10 +130,11 @@ static inline void initIO(void) {
 	// INIT: Shift Register
 	initSHR();
 
-	// INIT: Button inputs
+	// INIT: Button inputs; enable pullups
 	DDRB &= ~(_BV(3) | _BV(4) | _BV(5));
+    PORTB |= (_BV(3) | _BV(4) | _BV(5));
 
-	// INIT: USB IOs (configure as inputs, disable pullups!)
+	// INIT: USB IOs; configure as inputs, disable pullups
 	DDRD &= ~(_BV(1) | _BV(2));
 	PORTD &= ~(_BV(1) | _BV(2));
 
@@ -158,6 +159,8 @@ ISR(TIMER1_OVF_vect) {
 }
 
 // TIMER2_COMPA_vect is called on a CTC match between TCNT2 and OCR2A.
+// This is currently set up to tick at 250Hz, and sets a flag so non-
+// interrupt code can service displays, buttons, etc.
 ISR(TIMER2_COMPA_vect) {
 	up = 1;
 }
@@ -294,8 +297,6 @@ void do_buttons(void) {
 	}
 }
 
-// All we do here is start a new conversion.  An interrupt vector
-// handles actually using this information.
 void do_adc(void) {
 	adcReg = ADCH;			// stash current ADC value
     if ( bit_is_clear( ADCSRA, ADIF ) ) {
